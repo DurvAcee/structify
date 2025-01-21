@@ -29,7 +29,6 @@ export class ExcelService {
     }));
   }
 
-
   private parseCSV(csvData: string): Employee[] {
     const lines = csvData.split('\n');
     const headers = lines[0].split(',').map(header => header.trim().toLowerCase());
@@ -50,19 +49,60 @@ export class ExcelService {
     return employees;
   }
 
+   detectCycle(
+    email: string,
+    emailToReportsMap: Record<string, string>,
+    visited: Set<string>,
+    recursionStack: Set<string>
+  ): boolean {
+    if (!email) return false;
+
+    if (recursionStack.has(email)) return true;
+
+    if (visited.has(email)) return false;
+
+    visited.add(email);
+    recursionStack.add(email);
+
+    const reportsTo = emailToReportsMap[email];
+    if (reportsTo && this.detectCycle(reportsTo, emailToReportsMap, visited, recursionStack)) {
+      return true;
+    }
+
+    recursionStack.delete(email);
+    return false;
+  }
   validateStructure(employees: Employee[]): ValidationError[] {
     const emailToRoleMap: Record<string, string> = {};
     const emailToReports: Record<string, string[]> = {};
+    const emailToReportsMap: Record<string, string> = {};
     const errors: ValidationError[] = [];
   
     employees.forEach((employee) => {
       emailToRoleMap[employee.email] = employee.role;
+      emailToReportsMap[employee.email] = employee.reportsto;
+      
       if (!emailToReports[employee.reportsto]) {
         emailToReports[employee.reportsto] = [];
       }
       emailToReports[employee.reportsto].push(employee.email);
     });
   
+    const visited = new Set<string>();
+
+    // Cycle validation
+    employees.forEach((employee) => {
+      if (!visited.has(employee.email)) {
+        const recursionStack = new Set<string>();
+        if (this.detectCycle(employee.email, emailToReportsMap, visited, recursionStack)) {
+          errors.push({
+            row: employee,
+            error: `Detected a cycle in reporting structure starting from ${employee.fullname}`
+          });
+        }
+      }
+    });
+
     // RBAC validations
     employees.forEach((employee) => {
       // Root validation
